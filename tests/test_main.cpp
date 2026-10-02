@@ -6,6 +6,7 @@
 #include "gps.hpp"
 #include "report.hpp"
 #include "ring_buffer.hpp"
+#include "rtt.hpp"
 #include "sms.hpp"
 #include "text.hpp"
 
@@ -96,6 +97,46 @@ static void test_ring_buffer()
         CHECK(rb.push(static_cast<char>('0' + i % 10)));
         CHECK(rb.pop() == static_cast<char>('0' + i % 10));
     }
+}
+
+/*
+ * Проверяет RTT-буфер так, как его видит программатор: метку "SEGGER RTT",
+ * запись текста, заполнение до отказа (одна ячейка остаётся пустой),
+ * продолжение после того, как «программатор» прочитал часть, и переход
+ * записи через конец буфера. Параметров нет.
+ */
+static void test_rtt()
+{
+    rtt::init();
+    rtt::Buffer &up = _SEGGER_RTT.up[0];
+    CHECK_STR(std::string_view(_SEGGER_RTT.id), "SEGGER RTT");
+    CHECK(_SEGGER_RTT.max_up_buffers == 1 && up.size == rtt::kUpBufferSize);
+
+    CHECK(rtt::write("hello") == 5);
+    CHECK(up.write_offset == 5);
+    CHECK_STR(std::string_view(up.data, 5), "hello");
+
+    // Никто не читает: влезает ровно size - 1 байт, остальное отбрасывается
+    static char big[2 * rtt::kUpBufferSize];
+    for (char &c : big)
+        c = 'x';
+    CHECK(rtt::write(std::string_view(big, sizeof(big))) == rtt::kUpBufferSize - 1 - 5);
+    CHECK(rtt::write("y") == 0);
+
+    // «Программатор» прочитал 10 байт — места ровно на 10
+    up.read_offset = 10;
+    CHECK(rtt::write("0123456789ABC") == 10);
+    CHECK(up.write_offset == 9);
+    CHECK(up.data[rtt::kUpBufferSize - 1] == '0' && up.data[0] == '1' && up.data[8] == '9');
+
+    // Всё прочитано: запись идёт с места остановки и снова переходит через конец
+    up.read_offset = up.write_offset;
+    rtt::init();
+    up.write_offset = up.read_offset = rtt::kUpBufferSize - 2;
+    CHECK(rtt::write("abcd") == 4);
+    CHECK(up.write_offset == 2);
+    CHECK(up.data[rtt::kUpBufferSize - 2] == 'a' && up.data[rtt::kUpBufferSize - 1] == 'b');
+    CHECK(up.data[0] == 'c' && up.data[1] == 'd');
 }
 
 /*
@@ -331,6 +372,7 @@ int main()
     test_text();
     test_text_helpers();
     test_ring_buffer();
+    test_rtt();
     test_cgnsinf_fix();
     test_cgnsinf_southwest_and_short_fraction();
     test_cgnsinf_no_fix();

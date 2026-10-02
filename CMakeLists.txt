@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(LOGIC_SOURCES src/text.cpp src/gps.cpp src/sms.cpp src/report.cpp)
+set(LOGIC_SOURCES src/text.cpp src/gps.cpp src/sms.cpp src/report.cpp src/rtt.cpp)
 
 if(NOT CMAKE_CROSSCOMPILING)
     enable_testing()
@@ -98,5 +98,13 @@ elseif(OPENOCD)
         COMMAND ${OPENOCD} -f board/stm32f0discovery.cfg
                 -c "program $<TARGET_FILE:gps_tracker> verify reset exit"
         DEPENDS gps_tracker
+        USES_TERMINAL)
+endif()
+
+# cmake --build --preset firmware --target log — RTT-лог через ST-LINK (Ctrl+C — выход)
+find_package(Python3 COMPONENTS Interpreter)
+if(OPENOCD AND Python3_Interpreter_FOUND)
+    add_custom_target(log
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/rtt_log.py --openocd ${OPENOCD}
         USES_TERMINAL)
 endif()
