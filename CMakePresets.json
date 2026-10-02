@@ -1,0 +1,25 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "firmware",
+      "displayName": "STM32F051 firmware",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/firmware",
+      "toolchainFile": "${sourceDir}/cmake/arm-none-eabi.cmake",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "tests",
+      "displayName": "Host unit tests",
+      "binaryDir": "${sourceDir}/build/tests"
+    }
+  ],
+  "buildPresets": [
+    { "name": "firmware", "configurePreset": "firmware" },
+    { "name": "tests", "configurePreset": "tests", "configuration": "Debug" }
+  ],
+  "testPresets": [
+    { "name": "tests", "configurePreset": "tests", "configuration": "Debug", "output": { "outputOnFailure": true } }
+  ]
+}
