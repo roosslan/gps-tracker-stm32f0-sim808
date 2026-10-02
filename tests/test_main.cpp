@@ -3,28 +3,13 @@
 #include <cstdio>
 #include <string_view>
 
+#include "check.hpp"
 #include "gps.hpp"
 #include "report.hpp"
 #include "ring_buffer.hpp"
 #include "rtt.hpp"
 #include "sms.hpp"
 #include "text.hpp"
-
-using namespace std::string_view_literals;
-
-static int failures;
-
-#define CHECK(cond) do { \
-    if (!(cond)) { std::printf("%s:%d: CHECK(%s) failed\n", __FILE__, __LINE__, #cond); failures++; } \
-} while (0)
-
-#define CHECK_STR(a, b) do { \
-    std::string_view a_ = (a), b_ = (b); \
-    if (a_ != b_) { \
-        std::printf("%s:%d: \"%.*s\" != \"%.*s\"\n", __FILE__, __LINE__, \
-                    (int)a_.size(), a_.data(), (int)b_.size(), b_.data()); \
-        failures++; } \
-} while (0)
 
 /*
  * Проверяет Text<N>: добавление строк, символов и формата, обрезку при
@@ -132,7 +117,8 @@ static void test_rtt()
     // Всё прочитано: запись идёт с места остановки и снова переходит через конец
     up.read_offset = up.write_offset;
     rtt::init();
-    up.write_offset = up.read_offset = rtt::kUpBufferSize - 2;
+    up.write_offset = rtt::kUpBufferSize - 2;
+    up.read_offset = rtt::kUpBufferSize - 2;
     CHECK(rtt::write("abcd") == 4);
     CHECK(up.write_offset == 2);
     CHECK(up.data[rtt::kUpBufferSize - 2] == 'a' && up.data[rtt::kUpBufferSize - 1] == 'b');
@@ -384,10 +370,5 @@ int main()
     test_report_where();
     test_report_status();
 
-    if (failures) {
-        std::printf("%d check(s) failed\n", failures);
-        return 1;
-    }
-    std::printf("all tests passed\n");
-    return 0;
+    return report_failures();
 }
