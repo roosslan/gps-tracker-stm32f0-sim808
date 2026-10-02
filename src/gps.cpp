@@ -185,9 +185,9 @@ uint32_t parse_uint_or0(std::string_view s, int decimals)
  * "+CGNSINF:", так что перед ним может быть мусор. Если модуль сообщает,
  * что фикса нет, или сообщает о фиксе, но прислал координаты вне
  * допустимого диапазона (|широта| > 90°, |долгота| > 180°) или не число,
- * результат всё равно возвращается, но с fix = false. Высота, скорость,
- * курс, HDOP и спутники разбираются, только если координаты валидны;
- * отсутствующие поля остаются 0.
+ * результат всё равно возвращается, но с fix = false. Число спутников
+ * разбирается всегда — по нему видно, как идёт поиск. Высота, скорость,
+ * курс и HDOP — только если координаты валидны; отсутствующие поля остаются 0.
  *
  * Параметры:
  *   line — строка ответа модуля, например
@@ -213,6 +213,10 @@ std::optional<Fix> parse_cgnsinf(std::string_view line)
 
     Fix out;
     out.gnss_on = f[kRun][0] == '1';
+    if (f.count > kSatsInView)
+        out.sats_in_view = static_cast<uint8_t>(parse_uint_or0(f[kSatsInView], 0));
+    if (f.count > kSatsUsed)
+        out.sats_used = static_cast<uint8_t>(parse_uint_or0(f[kSatsUsed], 0));
     if (f.count < kMinFieldsForFix || f[kFixStatus] != "1")
         return out;
 
@@ -232,10 +236,6 @@ std::optional<Fix> parse_cgnsinf(std::string_view line)
         out.utc = *t;
     if (f.count > kHdop)
         out.hdop_x10 = static_cast<uint16_t>(parse_uint_or0(f[kHdop], 1));
-    if (f.count > kSatsInView)
-        out.sats_in_view = static_cast<uint8_t>(parse_uint_or0(f[kSatsInView], 0));
-    if (f.count > kSatsUsed)
-        out.sats_used = static_cast<uint8_t>(parse_uint_or0(f[kSatsUsed], 0));
     return out;
 }
 

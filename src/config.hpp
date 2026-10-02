@@ -32,6 +32,10 @@ inline constexpr uint32_t kGnssPollMs = 5000;
 // Как часто перечитывать непрочитанные SMS (на случай пропущенного +CMTI)
 // и проверять регистрацию в сети, мс.
 inline constexpr uint32_t kHousekeepingMs = 10u * 60u * 1000u;
+// Пока нет регистрации в сети, проверять её чаще, мс.
+inline constexpr uint32_t kRegistrationPollMs = 10000;
+// Пока нет фикса, писать в лог число видимых спутников раз в столько мс.
+inline constexpr uint32_t kGnssSearchLogMs = 30000;
 // После скольких неудачных опросов GNSS подряд модуль считается пропавшим.
 inline constexpr unsigned kMaxPollFailures = 5;
 

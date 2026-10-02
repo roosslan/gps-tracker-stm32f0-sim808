@@ -36,6 +36,7 @@ private:
     std::optional<gps::Fix> last_fix_;
     uint32_t last_fix_ms_ = 0;
     uint32_t last_poll_ms_ = 0;
+    uint32_t last_search_log_ms_ = 0;
     unsigned poll_failures_ = 0;
 
     // Лимит ответов: окно в один час
@@ -73,8 +74,9 @@ bool Tracker::fix_is_fresh() const
  *   - если приёмник выключен (например, модуль перезагрузился сам),
  *     снова включает его;
  *   - если есть фикс, сохраняет его как последний известный.
- * В лог пишет только появление фикса после перерыва, чтобы не засорять
- * его каждые 5 с. Параметров нет.
+ * В лог пишет появление фикса после перерыва, а пока фикса нет — раз
+ * в config::kGnssSearchLogMs число видимых спутников, чтобы было видно,
+ * как идёт поиск, но лог не засорялся каждые 5 с. Параметров нет.
  */
 void Tracker::poll_gnss()
 {
@@ -98,6 +100,9 @@ void Tracker::poll_gnss()
             logger::print("GPS fix, sats %u", f->sats_used);
         last_fix_ = *f;
         last_fix_ms_ = board::millis();
+    } else if (f->gnss_on && last_poll_ms_ - last_search_log_ms_ >= config::kGnssSearchLogMs) {
+        last_search_log_ms_ = last_poll_ms_;
+        logger::print("GPS: searching, %u satellites in view", f->sats_in_view);
     }
 }
 
@@ -212,8 +217,10 @@ void Tracker::update_leds() const
  *   - постоянно разбирает данные от модуля и обновляет светодиоды;
  *   - обрабатывает все SMS из очереди;
  *   - раз в config::kGnssPollMs опрашивает GPS;
- *   - раз в config::kHousekeepingMs проверяет регистрацию в сети (пишет
- *     в лог её потерю и восстановление) и перечитывает непрочитанные SMS;
+ *   - проверяет регистрацию в сети: пока её нет — раз в
+ *     config::kRegistrationPollMs с уровнем сигнала в логе, потом раз
+ *     в config::kHousekeepingMs (в лог — потеря и восстановление);
+ *   - раз в config::kHousekeepingMs перечитывает непрочитанные SMS;
  *   - между делами спит на WFI до следующего прерывания.
  * Выходит, если модуль сообщил о выключении или config::kMaxPollFailures раз
  * подряд не ответил на опрос GPS, — тогда main() перезапустит модуль.
@@ -222,6 +229,7 @@ void Tracker::update_leds() const
 void Tracker::run()
 {
     uint32_t last_housekeeping = board::millis();
+    uint32_t last_reg_check = board::millis() - config::kRegistrationPollMs; // первая проверка сразу
     bool was_registered = false;
     poll_failures_ = 0;
 
@@ -249,12 +257,20 @@ void Tracker::run()
             }
         }
 
-        if (now - last_housekeeping >= config::kHousekeepingMs) {
-            last_housekeeping = now;
+        uint32_t reg_interval = was_registered ? config::kHousekeepingMs : config::kRegistrationPollMs;
+        if (now - last_reg_check >= reg_interval) {
+            last_reg_check = now;
             bool reg = sim808::registered();
             if (reg != was_registered)
-                logger::print(reg ? "GSM network registered" : "GSM network lost");
+                logger::print(reg ? "GSM network registered, signal %d/31" : "GSM network lost, signal %d/31",
+                              sim808::signal());
+            else if (!reg)
+                logger::print("GSM: not registered yet, signal %d/31", sim808::signal());
             was_registered = reg;
+        }
+
+        if (now - last_housekeeping >= config::kHousekeepingMs) {
+            last_housekeeping = now;
             sim808::scan_unread();
         }
         board::wait_for_interrupt();
