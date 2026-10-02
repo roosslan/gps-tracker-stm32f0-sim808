@@ -146,6 +146,7 @@ bool start()
     }
 
     gnss_power(true);
+    logger::print("SIM808 ready: SMS and GNSS configured");
     return true;
 }
 
