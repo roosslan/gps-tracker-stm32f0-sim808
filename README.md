@@ -99,20 +99,61 @@ C++ здесь без того, что на микроконтроллере с 
 
 ## Прошивка
 
-Discovery подключается по USB (mini-USB, встроенный ST-LINK/V2).
+Discovery подключается по USB (mini-USB, встроенный ST-LINK/V2). Нужен драйвер ST-LINK: после его установки
+в диспетчере устройств в разделе «Устройства USB» появляется «STM32 STLink».
 
-- **STM32CubeProgrammer** ([st.com](https://www.st.com/en/development-tools/stm32cubeprog.html)): открыть `gps_tracker.hex` и нажать Download.
-  Если CLI установлен в стандартную директорию, прошить можно командой `cmake --build --preset firmware --target flash`.
-- **OpenOCD**: если он в PATH, та же цель `flash` вызовет
-  `openocd -f board/stm32f0discovery.cfg -c "program build/firmware/gps_tracker.elf verify reset exit"`.
+Удобнее всего через [OpenOCD](https://xpack-dev-tools.github.io/openocd-xpack/) (проверено на xPack 0.12.0).
+Если он не в PATH, путь к нему задаётся в `CMakeUserPresets.json` — это локальный файл этой машины, он в `.gitignore`:
+
+```json
+{
+  "version": 3,
+  "configurePresets": [
+    { "name": "firmware-local", "inherits": "firmware",
+      "cacheVariables": { "OPENOCD": "D:/Programs/_Embedded/xpack-openocd-0.12.0-2/bin/openocd.exe" } }
+  ],
+  "buildPresets": [ { "name": "firmware-local", "configurePreset": "firmware-local" } ]
+}
+```
+
+```bash
+cmake --preset firmware-local
+```
+
+```bash
+cmake --build --preset firmware-local --target flash
+```
+
+Цель `flash` собирает прошивку, записывает её, сверяет (`** Verified OK **`) и перезапускает плату.
+Можно и вручную в STM32CubeProgrammer: открыть `build/firmware/gps_tracker.hex` и нажать Download.
 
 ## Отладочный лог
 
-USB-UART переходник: RX переходника на PA2, общий GND, 115200 8N1. Пример:
+Лог пишется сразу в два места, выбирай любое.
+
+**Через ST-LINK (RTT), без лишних проводов.** Прошивка складывает строки в буфер на 1 КБ в RAM, а OpenOCD забирает их
+через тот же USB-кабель, не останавливая плату. Нужен только Python 3:
+
+```bash
+cmake --build --preset firmware-local --target log
+```
+
+или напрямую — с ключом `--reset` плата перезапустится, и лог будет виден с самого старта:
+
+```bash
+python tools/rtt_log.py --openocd D:/Programs/_Embedded/xpack-openocd-0.12.0-2/bin/openocd.exe --reset
+```
+
+Выход — Ctrl+C, прошивка при этом продолжает работать. Пока лог никто не читает, буфер заполняется, и новые строки
+отбрасываются — на работу трекера это не влияет.
+
+**Через USB-UART переходник.** RX переходника на `PA2` Discovery, общий GND, 115200 8N1.
+
+Пример лога:
 
 ```
-[    0.001] gps-tracker start, reset: power-on
-[    0.002] WARNING: src/allowed_numbers.h is empty or missing, anyone can request the location
+[    0.000] gps-tracker start, reset: power-on
+[    0.004] WARNING: src/allowed_numbers.h is empty or missing, anyone can request the location
 [    1.512] SIM808 answers
 [    1.530] module: SIM808 R14.18
 [   42.120] GPS fix, sats 6
@@ -122,7 +163,7 @@ USB-UART переходник: RX переходника на PA2, общий GN
 
 ## Тесты
 
-Строки, кольцевой буфер, парсеры `+CGNSINF`/SMS и тексты ответов написаны без привязки к железу и проверяются на ПК любым компилятором C++20 (MSVC 2022, gcc 10+, clang 13+):
+Строки, кольцевой буфер, RTT-буфер, парсеры `+CGNSINF`/SMS и тексты ответов написаны без привязки к железу и проверяются на ПК любым компилятором C++20 (MSVC 2022, gcc 10+, clang 13+):
 
 ```bash
 cmake --preset tests
@@ -145,6 +186,7 @@ ctest --preset tests
 | `src/at.cpp` | AT-движок: строки из UART, ответы на команды, URC (`+CMTI`), приглашение `> ` |
 | `src/uart.cpp` | USART1 к модулю (приём по прерыванию в кольцевой буфер 512 Б), USART2 для лога |
 | `src/ring_buffer.hpp` | шаблон кольцевого буфера «прерывание пишет — главный цикл читает» |
+| `src/rtt.cpp` | отладочный лог через ST-LINK по протоколу SEGGER RTT |
 | `src/board.cpp` | такты 48 МГц от HSI, SysTick 1 мс, сторожевой таймер ~6.5 с, светодиоды, PWRKEY |
 | `src/text.cpp` | `Text<N>` — строка фиксированного размера без кучи, помощники разбора текста |
 | `src/gps.cpp` | разбор `+CGNSINF`, координаты в целых микроградусах (FPU у F0 нет) |
@@ -152,5 +194,6 @@ ctest --preset tests
 | `src/report.cpp` | тексты SMS-ответов (не длиннее 160 символов) |
 | `src/config.hpp` | настройки: скорости, интервалы, лимит ответов |
 | `src/startup.cpp`, `src/syscalls.cpp`, `linker/` | таблица векторов, заглушки newlib и карта памяти STM32F051R8 |
+| `tools/rtt_log.py` | запускает OpenOCD и показывает RTT-лог в терминале |
 
 Если что-то зависнет больше чем на 6.5 с, сторожевой таймер перезагрузит плату. После перезагрузки в логе будет `reset: WATCHDOG`.

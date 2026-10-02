@@ -3,3 +3,9 @@ build/
 
 # Белый список номеров телефонов — личные данные, в репозиторий не кладём
 src/allowed_numbers.h
+
+# Локальные пути этой машины (OpenOCD и т.п.)
+CMakeUserPresets.json
+
+# Служебные файлы Python
+__pycache__/
