@@ -1,0 +1,60 @@
+# Проверки на каждый PR и на каждое изменение trunk:
+#  - сборка прошивки тем же компилятором, что используется локально (Arm GNU 14.2),
+#    готовые .elf/.hex/.bin сохраняются в артефакты запуска;
+#  - тесты на ПК под Linux (gcc) и Windows (MSVC);
+#  - описание над каждой функцией.
+# Предупреждения компилятора везде считаются ошибками.
+name: CI
+
+on:
+  push:
+    branches: [trunk]
+  pull_request:
+
+jobs:
+  firmware:
+    name: Прошивка
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '14.2.Rel1'
+      - name: Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Настройка
+        run: cmake --preset firmware -DWARNINGS_AS_ERRORS=ON
+      - name: Сборка
+        run: cmake --build --preset firmware
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            build/firmware/gps_tracker.elf
+            build/firmware/gps_tracker.hex
+            build/firmware/gps_tracker.bin
+            build/firmware/gps_tracker.map
+
+  tests:
+    name: Тесты (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Настройка
+        run: cmake --preset tests -DWARNINGS_AS_ERRORS=ON
+      - name: Сборка
+        run: cmake --build --preset tests
+      - name: Тесты
+        run: ctest --preset tests
+
+  docs:
+    name: Описания функций
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Проверка
+        run: python3 tools/check_docs.py

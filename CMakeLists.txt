@@ -11,17 +11,30 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(LOGIC_SOURCES src/text.cpp src/gps.cpp src/sms.cpp src/report.cpp src/rtt.cpp)
 
+# В CI включается -DWARNINGS_AS_ERRORS=ON: любое предупреждение компилятора — ошибка сборки.
+option(WARNINGS_AS_ERRORS "Считать предупреждения компилятора ошибками" OFF)
+
 if(NOT CMAKE_CROSSCOMPILING)
     enable_testing()
+
+    # logic_tests — чистая логика; at_tests — AT-движок и команды SIM808
+    # с поддельным модулем вместо UART (tests/fake_hw.cpp).
     add_executable(logic_tests tests/test_main.cpp ${LOGIC_SOURCES})
-    target_include_directories(logic_tests PRIVATE src)
-    if(MSVC)
-        target_compile_options(logic_tests PRIVATE /W4 /utf-8)
-    else()
-        target_compile_options(logic_tests PRIVATE -Wall -Wextra)
-    endif()
-    add_test(NAME logic_tests COMMAND logic_tests)
+    add_executable(at_tests tests/test_at.cpp tests/fake_hw.cpp src/at.cpp src/sim808.cpp ${LOGIC_SOURCES})
+    foreach(t logic_tests at_tests)
+        target_include_directories(${t} PRIVATE src tests)
+        if(MSVC)
+            target_compile_options(${t} PRIVATE /W4 /utf-8 $<$<BOOL:${WARNINGS_AS_ERRORS}>:/WX>)
+        else()
+            target_compile_options(${t} PRIVATE -Wall -Wextra $<$<BOOL:${WARNINGS_AS_ERRORS}>:-Werror>)
+        endif()
+        add_test(NAME ${t} COMMAND ${t})
+    endforeach()
     return()
+endif()
+
+if(WARNINGS_AS_ERRORS)
+    add_compile_options(-Werror)
 endif()
 
 # --- Прошивка -------------------------------------------------------------
